@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.vercel
+.env
+.env.*
+*.db
+*.db-journal
+*.tsbuildinfo
+src/generated

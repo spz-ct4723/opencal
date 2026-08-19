@@ -1,0 +1,283 @@
+// OpenCal — open-source multi-calendar sync, scheduling & unified calendar
+// Supports SQLite (default) and Postgres (set provider + DATABASE_URL)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  username      String    @unique
+  image         String?
+  timezone      String    @default("America/New_York")
+  brandColor    String    @default("#4F46E5")
+  brandCover    String?
+  bio           String?
+  socialLinks   String    @default("{}") // JSON
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  calendars     Calendar[]
+  syncConfigs   SyncConfig[]
+  schedulingLinks SchedulingLink[]
+  bookings      Booking[] @relation("HostBookings")
+  teamMemberships TeamMember[]
+  ownedTeams    Team[]    @relation("TeamOwner")
+  shareLinks    ShareLink[]
+  sessions      Session[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String   // google | outlook | icloud | mock
+  providerAccountId String
+  email             String?
+  displayName       String?
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  // iCloud app-specific password (encrypted at rest in production)
+  appPassword       String?
+  caldavUrl         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendars Calendar[]
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Calendar {
+  id               String   @id @default(cuid())
+  userId           String
+  accountId        String
+  externalId       String
+  name             String
+  color            String   @default("#4285F4")
+  isPrimary        Boolean  @default(false)
+  isReadOnly       Boolean  @default(false)
+  enabled          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  events   Event[]
+  syncMemberships SyncConfigCalendar[]
+  bookingTargets SchedulingLink[]  @relation("BookingTarget")
+
+  @@unique([accountId, externalId])
+  @@index([userId])
+}
+
+model Event {
+  id              String   @id @default(cuid())
+  calendarId      String
+  externalId      String?
+  title           String
+  description     String?
+  location        String?
+  conferenceUrl   String?
+  startAt         DateTime
+  endAt           DateTime
+  allDay          Boolean  @default(false)
+  timezone        String?
+  status          String   @default("confirmed") // confirmed | tentative | cancelled
+  visibility      String   @default("default") // default | public | private
+  showAs          String   @default("busy") // busy | free
+  color           String?
+  rsvp            String?  // accepted | tentative | declined | needsAction
+  attendeesJson   String   @default("[]") // JSON array
+  recurrenceRule  String?
+  // Clone tracking — prevents sync loops
+  isClone         Boolean  @default(false)
+  cloneSourceId   String?  // original Event.id if this is a clone
+  syncConfigId    String?  // which sync created this clone
+  sourceEventKey  String?  // stable key: provider:calendarId:externalId
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  calendar   Calendar    @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  syncConfig SyncConfig? @relation(fields: [syncConfigId], references: [id], onDelete: SetNull)
+
+  @@unique([calendarId, externalId])
+  @@index([calendarId, startAt, endAt])
+  @@index([isClone, syncConfigId])
+  @@index([sourceEventKey])
+}
+
+model SyncConfig {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  direction       String   @default("one_way") // one_way | multi_way
+  enabled         Boolean  @default(true)
+  // Privacy / field mapping
+  includeTitle    Boolean  @default(true)
+  customTitle     String?  // if set and includeTitle=false, use this (e.g. "Busy")
+  titleSuffix     String?  // e.g. " (Clone)"
+  includeDescription Boolean @default(false)
+  includeLocation Boolean  @default(false)
+  includeAttendees Boolean @default(false)
+  includeConference Boolean @default(false)
+  markPrivate     Boolean  @default(true)
+  disableReminders Boolean @default(true)
+  syncFreeEvents  Boolean  @default(false)
+  cloneColor      String?
+  // Filters
+  excludeColors   String   @default("[]") // JSON color list
+  includeRsvps    String   @default("[\"accepted\",\"tentative\",\"needsAction\"]") // JSON
+  lastSyncedAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendars SyncConfigCalendar[]
+  clones    Event[]
+
+  @@index([userId])
+}
+
+model SyncConfigCalendar {
+  id           String  @id @default(cuid())
+  syncConfigId String
+  calendarId   String
+  role         String  // source | target | peer (for multi_way)
+
+  syncConfig SyncConfig @relation(fields: [syncConfigId], references: [id], onDelete: Cascade)
+  calendar   Calendar   @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([syncConfigId, calendarId, role])
+  @@index([calendarId])
+}
+
+model SchedulingLink {
+  id                String   @id @default(cuid())
+  userId            String
+  slug              String
+  title             String
+  description       String?
+  // Duration(s) in minutes — JSON array e.g. [30] or [15,30,60]
+  durations         String   @default("[30]")
+  locationType      String   @default("google_meet") // google_meet | teams | zoom | phone | in_person | custom
+  locationValue     String?
+  // Availability: weekly hours JSON
+  // { mon: [{start:"09:00",end:"17:00"}], ... }
+  availabilityJson  String   @default("{\"mon\":[{\"start\":\"09:00\",\"end\":\"17:00\"}],\"tue\":[{\"start\":\"09:00\",\"end\":\"17:00\"}],\"wed\":[{\"start\":\"09:00\",\"end\":\"17:00\"}],\"thu\":[{\"start\":\"09:00\",\"end\":\"17:00\"}],\"fri\":[{\"start\":\"09:00\",\"end\":\"17:00\"}],\"sat\":[],\"sun\":[]}")
+  dateOverridesJson String   @default("[]") // [{date:"2026-07-20",slots:[{start,end}]}] or blocked
+  bufferBefore      Int      @default(0) // minutes
+  bufferAfter       Int      @default(0)
+  minNoticeMinutes  Int      @default(60)
+  maxDaysAhead      Int      @default(60)
+  maxBookingsPerDay Int?
+  requireApproval   Boolean  @default(false)
+  allowGuests       Boolean  @default(true)
+  questionsJson     String   @default("[]") // custom form fields
+  // Branding
+  brandColor        String?
+  coverImage        String?
+  language          String   @default("en")
+  confirmationMsg   String?
+  redirectUrl       String?
+  // Which calendars block availability (JSON array of calendar IDs); empty = all
+  conflictCalendarIds String @default("[]")
+  targetCalendarId  String?
+  // Collective: host user IDs (JSON) — empty means just owner
+  hostUserIds       String   @default("[]")
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetCalendar Calendar? @relation("BookingTarget", fields: [targetCalendarId], references: [id], onDelete: SetNull)
+  bookings       Booking[]
+
+  @@unique([userId, slug])
+  @@index([slug])
+}
+
+model Booking {
+  id               String   @id @default(cuid())
+  schedulingLinkId String
+  hostUserId       String
+  guestName        String
+  guestEmail       String
+  guestNotes       String?
+  answersJson      String   @default("{}")
+  additionalGuests String   @default("[]") // JSON emails
+  startAt          DateTime
+  endAt            DateTime
+  timezone         String
+  duration         Int
+  status           String   @default("confirmed") // pending | confirmed | cancelled | declined
+  eventId          String?  // linked local Event id
+  cancelToken      String   @unique @default(cuid())
+  rescheduleToken  String   @unique @default(cuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  schedulingLink SchedulingLink @relation(fields: [schedulingLinkId], references: [id], onDelete: Cascade)
+  host           User           @relation("HostBookings", fields: [hostUserId], references: [id], onDelete: Cascade)
+
+  @@index([hostUserId, startAt])
+  @@index([schedulingLinkId])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner   User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      String   @default("member") // owner | admin | member
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model ShareLink {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique @default(cuid())
+  name         String
+  calendarIds  String   @default("[]") // JSON
+  showDetails  Boolean  @default(false) // if false, only busy blocks
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}

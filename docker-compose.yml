@@ -1,0 +1,19 @@
+services:
+  opencal:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      DATABASE_URL: file:/data/opencal.db
+      DEMO_MODE: ${DEMO_MODE:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+    volumes:
+      - opencal-data:/data
+
+volumes:
+  opencal-data:
