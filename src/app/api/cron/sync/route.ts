@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { runSyncConfig } from "@/lib/sync/engine";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Hobby's function ceiling. A large sync can still be killed; see docs/VERCEL.md.
+export const maxDuration = 60;
+
 /**
- * Background sync endpoint. Call with Authorization: Bearer $CRON_SECRET
- * e.g. every 2–5 minutes via system cron or a worker.
+ * Background sync. Vercel Cron calls GET and sends
+ * `Authorization: Bearer $CRON_SECRET` when that env var is set.
+ * An external scheduler (the Mac mini) can POST the same header as often
+ * as the plan's function duration allows. Hobby Cron itself is once a day.
  */
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
   if (!secret || authHeader !== `Bearer ${secret}`) {
@@ -33,4 +40,12 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ synced: results.length, results });
+}
+
+export function GET(req: NextRequest) {
+  return handle(req);
+}
+
+export function POST(req: NextRequest) {
+  return handle(req);
 }

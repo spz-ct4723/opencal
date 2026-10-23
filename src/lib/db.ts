@@ -1,31 +1,30 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaPg } from "@prisma/adapter-pg";
-import path from "path";
+import { Pool } from "pg";
+import {
+  connectionStringForPg,
+  poolMax,
+  pooledDatabaseUrl,
+} from "@/lib/database-url";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-function createPrismaClient() {
-  const url = process.env.DATABASE_URL ?? "file:./dev.db";
-
-  // PostgreSQL — recommended for serverless hosts (Vercel etc.)
-  if (url.startsWith("postgres")) {
-    const adapter = new PrismaPg({ connectionString: url });
-    return new PrismaClient({ adapter });
-  }
-
-  // SQLite (default) — resolve relative paths against the project root so the
-  // app and `prisma migrate` agree on the file location
-  let dbPath = url.replace(/^file:/, "");
-  if (!path.isAbsolute(dbPath)) {
-    dbPath = path.join(process.cwd(), dbPath);
-  }
-  const adapter = new PrismaBetterSqlite3({ url: dbPath });
+export function createPrismaClient() {
+  const url = pooledDatabaseUrl();
+  // Named prepared statements are not cached: PrismaPg only names them when
+  // statementNameGenerator is set. Supavisor transaction mode (port 6543)
+  // cannot keep named statements across clients. Pool max is 1 on Vercel.
+  const pool = new Pool({
+    connectionString: connectionStringForPg(url),
+    max: poolMax(url),
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+    allowExitOnIdle: true,
+  });
+  const adapter = new PrismaPg(pool, { disposeExternalPool: true });
   return new PrismaClient({ adapter });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+globalForPrisma.prisma = prisma;

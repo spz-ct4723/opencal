@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Providers } from "@/components/providers";
 
+// Skip static prerender so `next build` does not open a database connection.
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({
   children,
 }: {

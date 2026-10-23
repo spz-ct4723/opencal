@@ -1,12 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Keep the native SQLite module and driver adapters in node_modules at runtime
-  serverExternalPackages: [
-    "better-sqlite3",
-    "@prisma/adapter-better-sqlite3",
-    "@prisma/adapter-pg",
-  ],
+  // Driver adapter stays external so serverless traces node-postgres itself.
+  serverExternalPackages: ["@prisma/adapter-pg", "pg"],
 };
 
 export default nextConfig;
