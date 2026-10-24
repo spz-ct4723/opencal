@@ -29,6 +29,7 @@ export async function GET(
   res.cookies.set("opencal_oauth_state", state, {
     httpOnly: true,
     sameSite: "lax",
+    secure: req.nextUrl.protocol === "https:",
     maxAge: 600,
     path: "/",
   });

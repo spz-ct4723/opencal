@@ -26,54 +26,54 @@
 
 ## Run locally
 
+Postgres is required. The Mac mini SQLite deployment tracks `main` until this branch is merged.
+
 ```bash
 git clone https://github.com/spz-ct4723/opencal.git && cd opencal
 npm install
-cp .env.example .env        # then set AUTH_SECRET (openssl rand -hex 32)
-npx prisma migrate dev      # creates the SQLite database
+cp .env.example .env        # set DATABASE_URL, DIRECT_URL, and AUTH_SECRET
+npm run db:migrate:deploy   # applies prisma/migrations to DIRECT_URL
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and create an account.
 
-Optional demo data (mock calendars, sample sync + scheduling links): set `DEMO_MODE="true"` in `.env` and run `npm run seed`, then log in as `demo@opencal.dev` / `demo1234`.
+Optional demo data: set `DEMO_MODE="true"` in `.env` and run `npm run seed`, then log in as `demo@opencal.dev` / `demo1234`.
 
-## Databases
+## Database
 
-- **SQLite** (default) — zero setup, ideal for local dev, VPS, and Docker deployments.
-- **PostgreSQL** — set `DATABASE_URL=postgresql://…` and everything adapts automatically (the Prisma provider is resolved from the URL at generate time, and the app picks the matching driver at runtime). Required for serverless hosts like Vercel, where the filesystem is ephemeral.
+PostgreSQL only on this branch. Runtime uses `DATABASE_URL` (Supabase transaction pooler on Vercel). Migrations use `DIRECT_URL` (session pooler, port 5432). See [docs/VERCEL.md](docs/VERCEL.md).
 
-Apply the schema to Postgres with `npm run db:push`.
+`npm run db:migrate:deploy` is manual. The Vercel build does not migrate and does not connect to the database.
+
+The pre-cutover SQLite migration history is in `prisma/migrations-sqlite/`. Copy an existing SQLite file with `scripts/migrate-sqlite-to-postgres.ts` (dry-run unless you pass `--apply`).
 
 ## Deploy
 
-### Vercel (via GitHub)
+### Vercel
 
-1. Push this repo to GitHub and **Import** it in Vercel.
-2. Create a Postgres database (Vercel Marketplace: Neon, Supabase, etc.).
-3. Set environment variables on the project:
-   - `DATABASE_URL` — your Postgres connection string
-   - `AUTH_SECRET` — `openssl rand -hex 32`
-   - optionally `GOOGLE_CLIENT_ID/SECRET`, `MICROSOFT_CLIENT_ID/SECRET`, `CRON_SECRET`
-4. Deploy. The `vercel-build` script runs `prisma db push` automatically, so the schema is created on first deploy.
-5. For background sync, add a Vercel Cron Job hitting `POST /api/cron/sync` with header `Authorization: Bearer $CRON_SECRET`.
+The project `opencal` is linked. Preview deployments come from non-main branches. Environment variables, the baseline migration, OAuth redirect URIs, and the cutover runbook are in [docs/VERCEL.md](docs/VERCEL.md).
+
+`vercel-build` is `prisma generate && next build`. Apply `prisma/migrations/20261023120000_baseline` yourself with `npm run db:migrate:deploy`.
 
 ### Docker
 
 ```bash
-echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env
+cp .env.example .env   # point DATABASE_URL and DIRECT_URL at 127.0.0.1:5432
+docker compose up -d db
+npm run db:migrate:deploy
 docker compose up --build
 ```
 
-SQLite data persists in the `opencal-data` volume. Point `DATABASE_URL` at Postgres in `docker-compose.yml` if you prefer.
+Compose includes a local Postgres and overrides the app container URLs to hostname `db`. The password in `docker-compose.yml` is a local default. Host-side `db:migrate:deploy` uses `DIRECT_URL` from `.env` (`127.0.0.1`).
 
 ### Any Node host
 
 ```bash
-npm ci && npm run build && npm run start
+npm ci && npm run db:migrate:deploy && npm run build && npm run start
 ```
 
-Needs Node 20.9+ and a persistent disk (SQLite) or a Postgres URL.
+Needs Node 20.19+, 22.12+, or 24+ and a Postgres URL.
 
 ## Environment reference
 
@@ -81,9 +81,10 @@ See [.env.example](.env.example). Summary:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `DATABASE_URL` | yes | `file:./dev.db` (SQLite) or `postgresql://…` |
+| `DATABASE_URL` | yes | Pooled Postgres URL (port 6543 on Supabase) |
+| `DIRECT_URL` | for migrations | Session/direct Postgres URL (port 5432) |
 | `AUTH_SECRET` | yes | Session signing secret |
-| `NEXTAUTH_URL` | on non-Vercel hosts | Public base URL |
+| `AUTH_URL` | production only | Canonical origin. Leave unset on Vercel Preview |
 | `GOOGLE_CLIENT_ID/SECRET` | for Google sync | OAuth app with Calendar API |
 | `MICROSOFT_CLIENT_ID/SECRET` | for Outlook sync | Entra app with `Calendars.ReadWrite` |
 | `CRON_SECRET` | for background sync | Auth for `/api/cron/sync` |
@@ -96,7 +97,7 @@ curl -X POST https://your-host/api/cron/sync \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-Run every 1–5 minutes. Google/Outlook feel near real-time with frequent polling; iCloud is slower by design.
+On a single server, run it every 1–5 minutes. On Vercel Hobby, Cron can run only once a day (`vercel.json` uses 12:00 UTC) and only on production. See [docs/VERCEL.md](docs/VERCEL.md).
 
 ## MCP (AI assistants)
 
@@ -146,11 +147,11 @@ prisma/schema.prisma
 ## Production checklist
 
 1. `DEMO_MODE` unset or `false`
-2. Postgres for serverless hosts; SQLite is fine on a single server with a persistent disk
+2. Postgres via `DATABASE_URL` / `DIRECT_URL`. Apply migrations manually
 3. Strong `AUTH_SECRET` and `CRON_SECRET`; TLS in front of the app
-4. OAuth apps configured with the exact callback URLs above
-5. Schedule `/api/cron/sync` for continuous syncing
-6. Consider encrypting `appPassword`/tokens at rest (KMS) for larger deployments
+4. OAuth apps configured with the callback URLs in [docs/VERCEL.md](docs/VERCEL.md)
+5. Hobby Cron is daily. Use an external poller or Vercel Pro for frequent sync
+6. Tokens and iCloud app passwords are plaintext columns today. There is no encryption key
 
 ## License
 

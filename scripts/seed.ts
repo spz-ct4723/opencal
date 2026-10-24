@@ -1,25 +1,9 @@
 import "dotenv/config";
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
-import path from "path";
 import { addDays, setHours, setMinutes, startOfDay } from "date-fns";
+import { createPrismaClient } from "../src/lib/db";
 
-const rawUrl = process.env.DATABASE_URL ?? "file:./dev.db";
-
-function makeAdapter() {
-  if (rawUrl.startsWith("postgres")) {
-    return new PrismaPg({ connectionString: rawUrl });
-  }
-  let dbFile = rawUrl.replace(/^file:/, "");
-  if (!path.isAbsolute(dbFile)) {
-    dbFile = path.join(process.cwd(), dbFile);
-  }
-  return new PrismaBetterSqlite3({ url: dbFile });
-}
-
-const prisma = new PrismaClient({ adapter: makeAdapter() });
+const prisma = createPrismaClient();
 
 async function main() {
   console.log("Seeding OpenCal demo data...");

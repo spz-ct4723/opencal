@@ -1,5 +1,7 @@
-// OpenCal — open-source multi-calendar sync, scheduling & unified calendar
-// Supports SQLite (default) and Postgres (set provider + DATABASE_URL)
+// OpenCal — PostgreSQL (Supabase on Vercel).
+// Runtime uses DATABASE_URL (transaction pooler, port 6543) via PrismaPg.
+// Migrations use DIRECT_URL (session/direct, port 5432) via prisma.config.ts.
+// The pre-cutover SQLite history is in prisma/migrations-sqlite and is not applied here.
 
 generator client {
   provider = "prisma-client"
@@ -7,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {

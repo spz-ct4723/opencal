@@ -59,6 +59,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   secret: process.env.AUTH_SECRET,
+  // Preview deployments each have their own host. trustHost uses that host
+  // when AUTH_URL is unset. Do not set AUTH_URL on the Vercel Preview
+  // environment: Auth.js rewrites the request origin to AUTH_URL.
   trustHost: true,
 });
 

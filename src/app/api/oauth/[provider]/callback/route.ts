@@ -5,6 +5,8 @@ import { exchangeCode, fetchProfile, isOAuthProvider } from "@/lib/oauth";
 import { getFreshTokens, getProvider } from "@/lib/providers";
 import { pullCalendarEvents } from "@/lib/sync/engine";
 
+export const maxDuration = 60;
+
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ provider: string }> }

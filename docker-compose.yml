@@ -1,19 +1,38 @@
+# Local Postgres only. The password below is a compose default, not a Vercel secret.
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opencal
+      POSTGRES_PASSWORD: opencal
+      POSTGRES_DB: opencal
+    ports:
+      - "5432:5432"
+    volumes:
+      - opencal-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opencal -d opencal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   opencal:
     build: .
     ports:
       - "3000:3000"
     environment:
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
-      DATABASE_URL: file:/data/opencal.db
+      DATABASE_URL: postgresql://opencal:opencal@db:5432/opencal
+      DIRECT_URL: postgresql://opencal:opencal@db:5432/opencal
       DEMO_MODE: ${DEMO_MODE:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
       CRON_SECRET: ${CRON_SECRET:-}
-    volumes:
-      - opencal-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
-  opencal-data:
+  opencal-pg:

@@ -162,11 +162,12 @@ export default function SettingsPage() {
         <div className="space-y-3 p-5 text-sm">
           <p className="text-muted">
             POST JSON to <code className="rounded bg-slate-100 px-1">/api/mcp</code>{" "}
-            with session auth or{" "}
-            <code className="rounded bg-slate-100 px-1">
-              Authorization: Bearer demo
-            </code>
-            .
+            on this site&apos;s origin with a session cookie. The{" "}
+            <code className="rounded bg-slate-100 px-1">Bearer demo</code> token
+            works only when demo mode is on. The stdio probe in{" "}
+            <code className="rounded bg-slate-100 px-1">src/mcp/standalone.ts</code>{" "}
+            runs on your machine and points OPENCAL_URL at the deployment. It
+            does not run inside Vercel.
           </p>
           <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
 {`curl -X POST http://localhost:3000/api/mcp \\
@@ -187,13 +188,14 @@ export default function SettingsPage() {
           <p>
             Call{" "}
             <code className="rounded bg-slate-100 px-1">POST /api/cron/sync</code>{" "}
-            with{" "}
+            on this site&apos;s origin with{" "}
             <code className="rounded bg-slate-100 px-1">
               Authorization: Bearer $CRON_SECRET
-            </code>{" "}
-            every few minutes. Google/Outlook support near real-time via
-            frequent polling; iCloud is typically ~5–10 minutes due to Apple
-            CalDAV limits.
+            </code>
+            . Google and Outlook stay fresh with frequent polling; iCloud is
+            typically 5–10 minutes because of Apple CalDAV. Vercel Hobby Cron
+            can only call the route once a day; use an external scheduler for
+            a shorter interval. See docs/VERCEL.md.
           </p>
         </div>
       </Card>
